@@ -6,6 +6,9 @@
 #include <sys/wait.h>
 #include <sys/stat.h>
 
+// only during debugging
+#include <fcntl.h>
+
 /* 
  * Print the prompt.
  * add: use environment variables.
@@ -111,6 +114,27 @@ char **parse_cmd(char *cmd) {
 	return tokens;
 }
 
+/*
+ * Return pointer to part of argv after first pipe token (|).
+ * Modify argv to contain only part of argv before first pipe token,
+ * by replacing pipe token with NULL pointer.
+ * If pipe token does not exist, return pointer to off-the-end NULL
+ * pointer in argv, and leave argv unmodified.
+ *
+ * Note: only pipes in separate tokens are recognized.
+ * eg ./a|./b won't work, but ./a | ./b will.
+ */
+#define PIPE_TOKEN "|"
+char **separate_pipe(char **argv) {
+	for ( ; *argv; ++argv) {
+		if (strcmp(*argv, PIPE_TOKEN) == 0) {
+			*argv = NULL;
+			return ++argv;
+		}
+	}
+	return argv;
+}
+
 /* Prepend error msgs with this. */
 #define ERR_PREFIX "bsh"
 
@@ -195,10 +219,11 @@ void (*builtin_fns[])(char **argv) = {
  * Execute a command by checking if it is builtin or not.
  */
 void exec_cmd(char **argv) {
+	if (argv[0] == NULL) return; // only happens first token is a pipe
 	int i;
 	char *bstr;
 	int flag = 0;
-	for (i = 0; (bstr = builtin_strs[i]) != NULL; ++i) {
+	for (i = 0; (bstr = builtin_strs[i]); ++i) {
 		if (strcmp(bstr, argv[0]) == 0) {
 			flag = 1;
 			break;
@@ -215,9 +240,41 @@ int main() {
 	while (1) {
 		print_prompt();
 		char *cmd = read_cmd();
-		char **argv = parse_cmd(cmd);
-		// known ISSUE: executing an empty string gets stuck
-		exec_cmd(argv);
+		char **argv = parse_cmd(cmd), **nargv;
+		
+		// !!!!
+		// this piping is NOT how piping is really done
+		// a pipe is not a random-access file
+		// it is more of a FIFO queue
+		// edge cases are when the queue is full or empty
+		// !!!!
+
+		int pfd[2];
+		pfd[0] = STDIN_FILENO;
+
+		for ( ; *argv; argv = nargv) {
+			nargv = separate_pipe(argv);
+
+			int din = dup(STDIN_FILENO);
+			int dout = dup(STDOUT_FILENO);
+
+			int in = pfd[0];
+			dup2(in, STDIN_FILENO);
+
+			int out = STDOUT_FILENO;
+			if (*nargv) {
+				pipe(pfd);
+				out = pfd[1];
+			}
+			dup2(out, STDOUT_FILENO);
+
+			exec_cmd(argv);
+
+			if (in != STDIN_FILENO) close(in);
+			if (out != STDOUT_FILENO) close(out);
+			dup2(din, STDIN_FILENO);
+			dup2(dout, STDOUT_FILENO);
+		}
 	}
 }
 
