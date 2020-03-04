@@ -114,6 +114,8 @@ char **parse_cmd(char *cmd) {
 	return tokens;
 }
 
+
+
 /*
  * Return pointer to part of argv after first pipe token (|).
  * Modify argv to contain only part of argv before first pipe token,
@@ -123,6 +125,8 @@ char **parse_cmd(char *cmd) {
  *
  * Note: only pipes in separate tokens are recognized.
  * eg ./a|./b won't work, but ./a | ./b will.
+ *
+ * add: do as in real, i.e. support ./a|./b
  */
 #define PIPE_TOKEN "|"
 char **separate_pipe(char **argv) {
@@ -236,7 +240,33 @@ void exec_cmd(char **argv) {
 	}
 }
 
+/*
+ * Return pointer to char after first pipe char PIPE_CHAR,
+ * i.e. next token.
+ * Return off-the-end pointer (points to '\0') if no PIPE_CHAR.
+ * Terminate original string at first PIPE_CHAR.
+ * Ignore PIPE_CHARs inside balanced QUOTE_CHARs.
+ */
+#define PIPE_CHAR '|'
+#define QUOTE_CHAR '\''
+char *pipe_tokenize_cmd(char *cmd) {
+	int q = 0; // unbalanced quote?
+	for ( ; *cmd; ++cmd) {
+		if (*cmd == QUOTE_CHAR) {
+			q = !q;
+		} else if (*cmd == PIPE_CHAR) {
+			if (!q) {
+				*cmd = '\0';
+				return cmd + 1;
+			}
+		}
+	}
+	return cmd;
+}
+
 int main() {
+	/* earlier implementation with pipe tokens */
+	/*
 	while (1) {
 		print_prompt();
 		char *cmd = read_cmd();
@@ -275,6 +305,13 @@ int main() {
 			dup2(din, STDIN_FILENO);
 			dup2(dout, STDOUT_FILENO);
 		}
+	}
+	*/
+
+	while (1) {
+		print_prompt();
+#error incomplete
+// IMPORTANT: make a minimal submittable version, back it up and then branch the git repo to implement concurrent piping!
 	}
 }
 

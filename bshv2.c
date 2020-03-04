@@ -7,12 +7,9 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
-#define DEBUG
+//#define DEBUG
 /*
  * ISSUES!
- * file descriptors are not being released.
- * file writing is weird. want complete overwriting.
- *
  * a.out instead of ./a.out has to be supported.
  */
 
@@ -24,6 +21,8 @@
  * Print error and exit.
  */
 #define ERR(x) { if (x < 0) { perror(PREF); \
+	exit(EXIT_FAILURE); } }
+#define ERRM(s, x) { if (x < 0) { perror(strcat(PREF": ", s)); \
 	exit(EXIT_FAILURE); } }
 
 /*
@@ -288,7 +287,7 @@ void exec_cmd(char *cmd) {
 #endif
 		}
 		if (*outfile) {
-			out = open(outfile, O_WRONLY);
+			out = open(outfile, O_WRONLY | O_CREAT | O_TRUNC);
 			ERR(out);
 #ifdef DEBUG
 			fprintf(stderr, "opened fd %d\n", out);
@@ -325,7 +324,7 @@ void exec_cmd(char *cmd) {
 #endif
 			pid_t pid = fork();
 			ERR(pid);
-			if (pid == 0) ERR(execvp(argv[0], argv));
+			if (pid == 0) ERRM(argv[0], execvp(argv[0], argv));
 		}
 
 		if (in != STDIN_FILENO) {

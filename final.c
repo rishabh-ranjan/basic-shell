@@ -1,6 +1,7 @@
 /*
- * bshell - A Basic Shell.
+ * shell - A Basic Shell.
  * author - Rishabh Ranjan.
+ * entry - 2018CS10416
  */
 
 #include <stdio.h>
@@ -13,7 +14,7 @@
 #include <fcntl.h>
 
 /* Error prefix */
-#define PREF "bshell"
+#define PREF "shell"
 
 /*
  * Handle error in system call.
@@ -30,19 +31,24 @@ void sys_err(int x) {
  * Handle error in program execution.
  * Print error prefixed by name of program and exit.
  */
+#define BUFSIZE 500
 void prog_err(int x, char *name) {
 	if (x < 0) {
-		perror(strcat(PREF, name));
+		char *buf = malloc(BUFSIZE * sizeof(char));
+		strcpy(buf, PREF": ");
+		strncat(buf, name, BUFSIZE);
+		perror(buf);
 		exit(EXIT_FAILURE);
 	}
 }
+#undef BUFSIZE
 
 /*
  * Handle self-detected error.
  * Print error and exit.
  */
 void self_err(char *msg) {
-	fprintf(stderr, PREF": %s\n", s);
+	fprintf(stderr, PREF": %s\n", msg);
 	exit(EXIT_FAILURE);
 }
 
@@ -51,15 +57,18 @@ void self_err(char *msg) {
  */
 
 void builtin_cd(char **argv) {
+	printf("Internal command: cd\n");
 	char *dir = argv[1] ? argv[1] : getenv("HOME"); // cd to ~ by default
 	if (chdir(dir)) perror(PREF);
 }
 
 void builtin_pwd(char **argv) {
+	printf("Internal command: pwd\n");
 	printf("%s\n", getcwd(NULL, 0));
 }
 
 void builtin_mkdir(char **argv) {
+	printf("Internal command: mkdir\n");
 	if (argv[1]) {
 		if (mkdir(argv[1], 0777)) perror(PREF);
 	} else {
@@ -68,6 +77,7 @@ void builtin_mkdir(char **argv) {
 }
 
 void builtin_rmdir(char **argv) {
+	printf("Internal command: rmdir\n");
 	if (argv[1]) {
 		if (rmdir(argv[1])) perror(PREF);
 	} else {
@@ -76,6 +86,7 @@ void builtin_rmdir(char **argv) {
 }
 
 void builtin_exit(char **argv) {
+	printf("Internal command: exit\n");
 	exit(EXIT_SUCCESS);
 }
 
@@ -209,6 +220,8 @@ void buf_add(char *token) {
 	tokens[ind++] = token;
 }
 
+#undef BUFSIZE
+
 /*
  * Parse command into argv.
  */
@@ -253,6 +266,8 @@ void restore_io() {
  * - proper release of resources has been ensured.
  */
 #define PIPE_DELIM "|"
+/* used to prepend "./" to argv[0] */
+#define BUFSIZE 300
 void exec_cmd(char *cmd) {
 
 	char *prog; // individual program to be executed at a time
@@ -279,7 +294,7 @@ void exec_cmd(char *cmd) {
 			sys_err(in);
 		}
 		if (*outfile) { // if outfile is non-empty
-			out = open(outfile, O_WRONLY | O_CREAT | O_TRUNC);
+			out = open(outfile, O_WRONLY | O_CREAT | O_TRUNC, 0666);
 			sys_err(out);
 		}
 
@@ -294,7 +309,19 @@ void exec_cmd(char *cmd) {
 		} else {
 			pid_t pid = fork();
 			sys_err(pid);
-			if (pid == 0) prog_err(argv[0], execvp(argv[0], argv));
+			if (pid == 0) {
+				int err = execvp(argv[0], argv);
+				if (err < 0) {
+					// try prepending with "./" to search in current path
+					char *tmp = argv[0];
+					char *buf = malloc(BUFSIZE * sizeof(char));
+					strcpy(buf, "./");
+					argv[0] = strncat(buf, argv[0], BUFSIZE);
+					err = execvp(argv[0], argv);
+					prog_err(err, tmp);
+					free(buf);
+				}
+			}
 		}
 
 		if (in != STDIN_FILENO) sys_err(close(in));
@@ -304,6 +331,7 @@ void exec_cmd(char *cmd) {
 	int status;
 	while (wait(&status) > 0) ; // wait for all child processes to terminate
 }
+#undef BUFSIZE
 
 int main() {
 	dup_io();
